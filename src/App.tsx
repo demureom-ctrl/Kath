@@ -125,8 +125,10 @@ function AppContent() {
 
 function App() {
   // Check if this is a customer order URL
+  // Supports both root path (localhost) and subpath (/Kath/ on GitHub Pages)
   const path = window.location.pathname;
-  const orderMatch = path.match(/^\/order\/(.+)$/);
+  // Regex matches: optional /Kath, then /order/, then the token
+  const orderMatch = path.match(/^(?:\/Kath)?\/order\/(.+)$/);
 
   if (orderMatch) {
     const token = orderMatch[1];

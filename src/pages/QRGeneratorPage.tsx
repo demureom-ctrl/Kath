@@ -24,7 +24,9 @@ export function QRGeneratorPage() {
         setExpiresAt(timestamp + SESSION_DURATION);
 
         // Build the full URL for the QR code
-        let baseUrl = window.location.origin;
+        // Use window.location.href to get full current URL including base path (e.g., /Kath/)
+        // We strip the current page path ('/Kath/' or '/') and append the order path
+        let baseUrl = window.location.origin + window.location.pathname.replace(/\/$/, ''); // Remove trailing slash
 
         // Fix: If running on localhost, replace with local IP for external access
         if (baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1')) {
@@ -33,6 +35,8 @@ export function QRGeneratorPage() {
                 .replace('127.0.0.1', '192.168.100.181');
         }
 
+        // Remove 'qr' or other page paths if present in the base (shouldn't be for this structure, but safe check)
+        // If we are at root /Kath/, appending /order/token makes /Kath/order/token
         const url = `${baseUrl}/order/${token}`;
         setOrderUrl(url);
     };
