@@ -24,7 +24,15 @@ export function QRGeneratorPage() {
         setExpiresAt(timestamp + SESSION_DURATION);
 
         // Build the full URL for the QR code
-        const baseUrl = window.location.origin;
+        let baseUrl = window.location.origin;
+
+        // Fix: If running on localhost, replace with local IP for external access
+        if (baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1')) {
+            baseUrl = baseUrl
+                .replace('localhost', '192.168.100.181')
+                .replace('127.0.0.1', '192.168.100.181');
+        }
+
         const url = `${baseUrl}/order/${token}`;
         setOrderUrl(url);
     };
@@ -89,8 +97,8 @@ export function QRGeneratorPage() {
                     <div className="text-center">
                         {/* Timer */}
                         <div className={`mb-4 px-6 py-3 rounded-full font-bold text-lg ${timeLeft < 60000
-                                ? 'bg-red-100 text-red-700'
-                                : 'bg-green-100 text-green-700'
+                            ? 'bg-red-100 text-red-700'
+                            : 'bg-green-100 text-green-700'
                             }`}>
                             ⏱️ {formatTime(timeLeft)}
                         </div>

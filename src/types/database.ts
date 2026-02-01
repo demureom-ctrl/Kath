@@ -60,6 +60,13 @@ export interface IDatabase {
     addOrder(order: Omit<ActiveOrder, 'id'>): Promise<ActiveOrder>;
     updateOrderStatus(id: string, status: OrderStatus): Promise<ActiveOrder>;
     deleteOrder(id: string): Promise<void>;
+
+    // ==========================================
+    // Categories
+    // ==========================================
+    getCategories(): Promise<string[]>;
+    addCategory(name: string): Promise<string>;
+    deleteCategory(name: string): Promise<void>;
 }
 
 // Database configuration type (for future Supabase integration)

@@ -20,8 +20,8 @@ interface ProductsContextType {
     deleteProduct: (id: string) => Promise<void>;
     getProductById: (id: string) => Product | undefined;
     getMaxYield: (productId: string) => number;
-    addCategory: (category: string) => void;
-    deleteCategory: (category: string) => void;
+    addCategory: (category: string) => Promise<void>;
+    deleteCategory: (category: string) => Promise<void>;
 }
 
 const ProductsContext = createContext<ProductsContextType | undefined>(undefined);
@@ -32,25 +32,44 @@ export function ProductsProvider({ children }: { children: ReactNode }) {
     const [error, setError] = useState<string | null>(null);
     const { ingredients } = useInventory();
 
-    // Category State
-    const [categories, setCategories] = useState<string[]>(() => {
-        const saved = localStorage.getItem('categories');
-        return saved ? JSON.parse(saved) : ['Hot Drinks', 'Cold Drinks', 'Food', 'Desserts'];
-    });
+    // Category State - Now from database
+    const [categories, setCategories] = useState<string[]>([]);
 
-    useEffect(() => {
-        localStorage.setItem('categories', JSON.stringify(categories));
-    }, [categories]);
-
-    const addCategory = useCallback((category: string) => {
-        setCategories(prev => {
-            if (prev.includes(category)) return prev;
-            return [...prev, category];
-        });
+    // Load categories from database
+    const refreshCategories = useCallback(async () => {
+        try {
+            const data = await database.getCategories();
+            setCategories(data);
+        } catch (err) {
+            console.error('Failed to load categories:', err);
+            // Fallback to defaults
+            setCategories(['Hot Drinks', 'Cold Drinks', 'Food', 'Desserts']);
+        }
     }, []);
 
-    const deleteCategory = useCallback((category: string) => {
-        setCategories(prev => prev.filter(c => c !== category));
+    useEffect(() => {
+        refreshCategories();
+    }, [refreshCategories]);
+
+    const addCategory = useCallback(async (category: string) => {
+        try {
+            await database.addCategory(category);
+            setCategories(prev => {
+                if (prev.includes(category)) return prev;
+                return [...prev, category];
+            });
+        } catch (err) {
+            console.error('Failed to add category:', err);
+        }
+    }, []);
+
+    const deleteCategory = useCallback(async (category: string) => {
+        try {
+            await database.deleteCategory(category);
+            setCategories(prev => prev.filter(c => c !== category));
+        } catch (err) {
+            console.error('Failed to delete category:', err);
+        }
     }, []);
 
     // Products with calculated yield based on current inventory

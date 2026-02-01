@@ -23,17 +23,18 @@ function generateId(): string {
 function getFromStorage<T>(key: string, defaultValue: T): T {
     try {
         const stored = localStorage.getItem(key);
-        if (stored) {
-            const parsed = JSON.parse(stored);
-            // Convert date strings back to Date objects for sales
-            if (key === STORAGE_KEYS.SALES) {
-                return parsed.map((sale: Sale) => ({
-                    ...sale,
-                    date: new Date(sale.date),
-                })) as T;
-            }
-            // Convert dates for ingredients and products
+        if (!stored) return defaultValue;
+
+        const parsed = JSON.parse(stored);
+
+        // Convert date strings back to Date objects for sales
+        if (key === STORAGE_KEYS.SALES) {
+            return parsed.map((sale: any) => ({
+                ...sale,
+                date: new Date(sale.date),
+            })) as T;
         }
+
         // Convert dates for ingredients, products, and purchases
         if (key === STORAGE_KEYS.INGREDIENTS || key === STORAGE_KEYS.PRODUCTS || key === STORAGE_KEYS.PURCHASES) {
             return parsed.map((item: any) => ({
@@ -43,11 +44,12 @@ function getFromStorage<T>(key: string, defaultValue: T): T {
                 date: item.date ? new Date(item.date) : undefined,
             })) as T;
         }
-        return parsed;
+
+        return parsed as T;
     } catch (error) {
         console.error(`Error reading from localStorage key ${key}:`, error);
+        return defaultValue;
     }
-    return defaultValue;
 }
 
 function saveToStorage<T>(key: string, data: T): void {
@@ -89,18 +91,15 @@ class MockDatabase implements IDatabase {
     private initialize(): void {
         if (this.initialized) return;
 
-        // Load from storage or seed
         this.ingredients = getFromStorage<Ingredient[]>(STORAGE_KEYS.INGREDIENTS, []);
         this.products = getFromStorage<Product[]>(STORAGE_KEYS.PRODUCTS, []);
         this.sales = getFromStorage<Sale[]>(STORAGE_KEYS.SALES, []);
         this.purchases = getFromStorage<Purchase[]>(STORAGE_KEYS.PURCHASES, []);
 
-        // Seed ingredients if empty
         if (this.ingredients.length === 0) {
             this.seedIngredients();
         }
 
-        // Seed products if empty
         if (this.products.length === 0) {
             this.seedProducts();
         }
@@ -125,10 +124,8 @@ class MockDatabase implements IDatabase {
         const milk = this.ingredients.find(i => i.name === 'Milk');
         const smallCup = this.ingredients.find(i => i.name === 'Cups (Small)');
         const largeCup = this.ingredients.find(i => i.name === 'Cups (Large)');
-
         const chocolate = this.ingredients.find(i => i.name === 'Chocolate Syrup');
         const vanilla = this.ingredients.find(i => i.name === 'Vanilla Syrup');
-
 
         if (!beans || !milk || !smallCup || !largeCup) return;
 
@@ -200,7 +197,7 @@ class MockDatabase implements IDatabase {
                 recipe: [
                     { ingredientId: beans.id, quantity: 20 },
                     { ingredientId: milk.id, quantity: 120 },
-                    { ingredientId: chocolate!.id, quantity: 30 },
+                    { ingredientId: chocolate?.id || '', quantity: 30 },
                     { ingredientId: largeCup.id, quantity: 1 },
                 ],
                 isActive: true,
@@ -216,7 +213,7 @@ class MockDatabase implements IDatabase {
                 recipe: [
                     { ingredientId: beans.id, quantity: 20 },
                     { ingredientId: milk.id, quantity: 150 },
-                    { ingredientId: vanilla!.id, quantity: 20 },
+                    { ingredientId: vanilla?.id || '', quantity: 20 },
                     { ingredientId: largeCup.id, quantity: 1 },
                 ],
                 isActive: true,
@@ -243,9 +240,6 @@ class MockDatabase implements IDatabase {
         saveToStorage(STORAGE_KEYS.PURCHASES, this.purchases);
     }
 
-    // ==========================================
-    // Ingredients CRUD
-    // ==========================================
     async getIngredients(): Promise<Ingredient[]> {
         return [...this.ingredients];
     }
@@ -287,9 +281,6 @@ class MockDatabase implements IDatabase {
         this.saveIngredients();
     }
 
-    // ==========================================
-    // Products CRUD
-    // ==========================================
     async getProducts(): Promise<Product[]> {
         return [...this.products];
     }
@@ -331,9 +322,6 @@ class MockDatabase implements IDatabase {
         this.saveProducts();
     }
 
-    // ==========================================
-    // Sales
-    // ==========================================
     async getSales(): Promise<Sale[]> {
         return [...this.sales].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     }
@@ -352,9 +340,6 @@ class MockDatabase implements IDatabase {
         return newSale;
     }
 
-    // ==========================================
-    // Inventory Operations
-    // ==========================================
     async deductInventory(deductions: InventoryDeduction[]): Promise<void> {
         for (const { ingredientId, amount } of deductions) {
             const ingredient = this.ingredients.find(i => i.id === ingredientId);
@@ -376,9 +361,6 @@ class MockDatabase implements IDatabase {
         return ingredient;
     }
 
-    // ==========================================
-    // Purchases
-    // ==========================================
     async getPurchases(): Promise<Purchase[]> {
         return [...this.purchases].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     }
@@ -391,12 +373,8 @@ class MockDatabase implements IDatabase {
         this.purchases.push(newPurchase);
         this.savePurchases();
         return newPurchase;
-        // ==========================================
     }
 
-    // ==========================================
-    // User Management
-    // ==========================================
     async getUsers(): Promise<User[]> {
         return getFromStorage<User[]>(STORAGE_KEYS.USERS, []);
     }
@@ -433,9 +411,6 @@ class MockDatabase implements IDatabase {
         saveToStorage(STORAGE_KEYS.USERS, filtered);
     }
 
-    // ==========================================
-    // Orders (Kitchen Queue) - Stub for mock, uses localStorage
-    // ==========================================
     async getOrders(): Promise<ActiveOrder[]> {
         const orders = getFromStorage<any[]>('activeOrders', []);
         return orders.map(o => ({
@@ -469,8 +444,29 @@ class MockDatabase implements IDatabase {
         const filtered = orders.filter(o => o.id !== id);
         saveToStorage('activeOrders', filtered);
     }
+
+    // ==========================================
+    // Categories
+    // ==========================================
+    async getCategories(): Promise<string[]> {
+        return getFromStorage<string[]>('coffee_shop_categories', ['Hot Drinks', 'Cold Drinks', 'Food', 'Desserts']);
+    }
+
+    async addCategory(name: string): Promise<string> {
+        const categories = await this.getCategories();
+        if (!categories.includes(name)) {
+            categories.push(name);
+            saveToStorage('coffee_shop_categories', categories);
+        }
+        return name;
+    }
+
+    async deleteCategory(name: string): Promise<void> {
+        const categories = await this.getCategories();
+        const filtered = categories.filter(c => c !== name);
+        saveToStorage('coffee_shop_categories', filtered);
+    }
 }
 
-// Export singleton instance
 export const mockDatabase = new MockDatabase();
 export default mockDatabase;

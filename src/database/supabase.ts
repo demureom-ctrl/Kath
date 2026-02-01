@@ -531,4 +531,37 @@ export class SupabaseDatabase implements IDatabase {
             createdAt: new Date(row.created_at)
         };
     }
+
+    // ==========================================
+    // Categories
+    // ==========================================
+    async getCategories(): Promise<string[]> {
+        const { data, error } = await this.client
+            .from('categories')
+            .select('name')
+            .order('name', { ascending: true });
+
+        if (error) throw error;
+        return (data || []).map(row => row.name);
+    }
+
+    async addCategory(name: string): Promise<string> {
+        const { data, error } = await this.client
+            .from('categories')
+            .insert([{ name }])
+            .select()
+            .single();
+
+        if (error) throw error;
+        return data.name;
+    }
+
+    async deleteCategory(name: string): Promise<void> {
+        const { error } = await this.client
+            .from('categories')
+            .delete()
+            .eq('name', name);
+
+        if (error) throw error;
+    }
 }

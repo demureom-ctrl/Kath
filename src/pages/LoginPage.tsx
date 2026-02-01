@@ -51,7 +51,7 @@ export function LoginPage() {
                                 value={username}
                                 onChange={(e) => setUsername(e.target.value)}
                                 className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#556c33]"
-                                placeholder="admin أو staff"
+                                placeholder="اسم المستخدم"
                                 required
                                 autoComplete="username"
                             />
@@ -95,20 +95,7 @@ export function LoginPage() {
                         </button>
                     </form>
 
-                    {/* Demo Credentials */}
-                    <div className="mt-6 p-4 bg-gray-50 rounded-xl">
-                        <p className="text-xs text-gray-500 text-center mb-2">بيانات الدخول للتجربة:</p>
-                        <div className="grid grid-cols-2 gap-2 text-xs">
-                            <div className="bg-white p-2 rounded-lg border border-gray-200">
-                                <p className="font-semibold text-gray-700">المدير (كل الصفحات)</p>
-                                <p className="text-gray-500">admin / admin123</p>
-                            </div>
-                            <div className="bg-white p-2 rounded-lg border border-gray-200">
-                                <p className="font-semibold text-gray-700">الموظف (البيع فقط)</p>
-                                <p className="text-gray-500">staff / staff123</p>
-                            </div>
-                        </div>
-                    </div>
+
                 </div>
             </div>
         </div>
