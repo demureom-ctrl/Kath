@@ -123,23 +123,27 @@ function AppContent() {
   );
 }
 
+import { HashRouter, Routes, Route, useParams, Navigate } from 'react-router-dom';
+
+// Wrapper for Customer Order Page to extract token from params
+function CustomerOrderRoute() {
+  const { token } = useParams<{ token: string }>();
+  if (!token) return <Navigate to="/" />;
+  return <CustomerOrderPage token={token} />;
+}
+
 function App() {
-  // Check if this is a customer order URL
-  // Supports both root path (localhost) and subpath (/Kath/ on GitHub Pages)
-  const path = window.location.pathname;
-  // Regex matches: optional /Kath, then /order/, then the token
-  const orderMatch = path.match(/^(?:\/Kath)?\/order\/(.+)$/);
-
-  if (orderMatch) {
-    const token = orderMatch[1];
-    // Render customer order page without auth
-    return <CustomerOrderPage token={token} />;
-  }
-
   return (
-    <AppProvider>
-      <AppContent />
-    </AppProvider>
+    <HashRouter>
+      <Routes>
+        <Route path="/order/:token" element={<CustomerOrderRoute />} />
+        <Route path="/*" element={
+          <AppProvider>
+            <AppContent />
+          </AppProvider>
+        } />
+      </Routes>
+    </HashRouter>
   );
 }
 
