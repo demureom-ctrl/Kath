@@ -4,6 +4,7 @@
 
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import pkg from '../../package.json';
 
 export function LoginPage() {
     const { login } = useAuth();
@@ -96,6 +97,11 @@ export function LoginPage() {
                     </form>
 
 
+                </div>
+
+                {/* Version Display */}
+                <div className="text-center mt-6 text-xs text-gray-400 font-medium dir-ltr">
+                    v{pkg.version}
                 </div>
             </div>
         </div>
