@@ -102,3 +102,12 @@
 .pulse-glow {
   animation: pulse-glow 2s ease-in-out infinite;
 }
+
+/* Safe Area Utilities for Notch Support */
+.safe-pt-header {
+  padding-top: calc(0.5rem + env(safe-area-inset-top, 0px));
+}
+
+.safe-pt-content {
+  padding-top: calc(3.5rem + env(safe-area-inset-top, 0px));
+}

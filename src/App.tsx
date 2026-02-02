@@ -88,7 +88,7 @@ function AppContent() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       {/* User Header Bar */}
-      <div className="fixed top-0 left-0 right-0 z-50 bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-between">
+      <div className="fixed top-0 left-0 right-0 z-50 bg-white border-b border-gray-200 px-4 pb-2 safe-pt-header flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 bg-gradient-to-br from-[#556c33] to-[#3e4f24] rounded-lg flex items-center justify-center">
             <span className="text-sm">☕</span>
@@ -109,7 +109,7 @@ function AppContent() {
       </div>
 
       {/* Main Content - with top padding for user bar */}
-      <div className="pt-14">
+      <div className="safe-pt-content">
         {renderPage()}
       </div>
 
