@@ -121,21 +121,26 @@ export function BottomNav({ activeTab, onTabChange, alertCount = 0, isAdmin = fa
 
     return (
         <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg safe-area-inset-bottom z-50">
-            <div className="flex justify-around items-center h-16 px-1 max-w-lg mx-auto overflow-x-auto">
+            <div className="flex justify-around items-center h-20 px-1 max-w-lg mx-auto overflow-x-auto">
                 {visibleItems.map((item) => {
                     const isActive = activeTab === item.id;
                     const showBadge = item.id === 'reports' && alertCount > 0;
+                    const isPOS = item.id === 'pos';
 
                     return (
                         <button
                             key={item.id}
                             onClick={() => onTabChange(item.id)}
                             className={`
-                relative flex flex-col items-center justify-center min-w-[3.5rem] w-full h-14 rounded-xl
+                relative flex flex-col items-center justify-center min-w-[4rem] w-full h-16 rounded-xl
                 transition-all duration-300 ease-out
-                ${isActive
-                                    ? 'text-[#556c33] bg-[#556c33]/10 scale-105'
-                                    : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+                ${isPOS
+                                    ? isActive
+                                        ? 'text-white bg-gradient-to-t from-[#e67e22] to-[#f39c12] scale-105 shadow-md shadow-orange-300/50'
+                                        : 'text-[#e67e22] bg-orange-50 hover:bg-orange-100'
+                                    : isActive
+                                        ? 'text-[#556c33] bg-[#556c33]/10 scale-105'
+                                        : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
                                 }
               `}
                         >
@@ -146,8 +151,11 @@ export function BottomNav({ activeTab, onTabChange, alertCount = 0, isAdmin = fa
                                 {item.icon}
                             </div>
                             <span className={`
-                text-[9px] mt-1 font-medium truncate w-full text-center
-                ${isActive ? 'text-[#556c33]' : 'text-gray-500'}
+                text-[11px] mt-1 font-semibold truncate w-full text-center
+                ${isPOS
+                                    ? isActive ? 'text-white' : 'text-[#e67e22]'
+                                    : isActive ? 'text-[#556c33]' : 'text-gray-500'
+                                }
               `}>
                                 {item.label}
                             </span>
@@ -161,7 +169,7 @@ export function BottomNav({ activeTab, onTabChange, alertCount = 0, isAdmin = fa
 
                             {/* Active indicator */}
                             {isActive && (
-                                <div className="absolute -bottom-1 w-6 h-1 bg-[#556c33] rounded-full" />
+                                <div className={`absolute -bottom-1 w-6 h-1 rounded-full ${isPOS ? 'bg-[#e67e22]' : 'bg-[#556c33]'}`} />
                             )}
                         </button>
                     );
