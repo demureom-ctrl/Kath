@@ -27,3 +27,7 @@ dist-ssr
 .env
 .env.local
 .env.*
+
+# Secret-containing scripts
+check_pages_status.mjs
+check_visibility.mjs
