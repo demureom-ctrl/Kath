@@ -11,12 +11,177 @@ import { useOrders } from '../context/OrdersContext';
 
 import { getProductIcon } from '../utils/productIcons';
 
-import { formatCurrency } from '../utils/calculations';
-import { Product } from '../types';
+import { formatCurrency, calculateCartTotal } from '../utils/calculations';
+import { Product, Customer } from '../types';
+import database from '../database';
+
+const CustomerSelection = () => {
+    const { selectedCustomer, selectCustomer, discountAmount, setDiscountAmount, cart } = useSales();
+    const [searchTerm, setSearchTerm] = useState('');
+    const [searchResults, setSearchResults] = useState<Customer[]>([]);
+    const [searching, setSearching] = useState(false);
+    const [showSearch, setShowSearch] = useState(false);
+
+    const cartTotalRaw = calculateCartTotal(cart);
+
+    // Calculate max redeemable SAR based on 150 pts = 1 SAR rule
+    // And limited by the cart total (cannot discount more than total)
+    const maxPointsValue = selectedCustomer ? Math.floor(selectedCustomer.loyaltyPoints / 150) : 0;
+    const maxCartValue = Math.floor(cartTotalRaw);
+    const maxRedeem = Math.min(maxPointsValue, maxCartValue);
+
+    const handleSearch = async (term: string) => {
+        setSearchTerm(term);
+        if (term.length < 3) {
+            setSearchResults([]);
+            return;
+        }
+
+        setSearching(true);
+        try {
+            // Fetch all customers and filter locally to allow partial matches for both name and phone
+            const all = await database.getCustomers();
+            const filtered = all.filter(c =>
+                c.name.toLowerCase().includes(term.toLowerCase()) ||
+                c.phoneNumber.includes(term)
+            );
+            setSearchResults(filtered);
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setSearching(false);
+        }
+    };
+
+    if (selectedCustomer) {
+        return (
+            <div className="bg-gradient-to-br from-green-50 to-white p-4 rounded-xl mb-3 border border-green-200 shadow-sm">
+                <div className="flex justify-between items-start mb-4">
+                    <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                            <span className="text-xl">👤</span>
+                            <h3 className="font-bold text-gray-800 text-lg">{selectedCustomer.name}</h3>
+                        </div>
+                        <div className="flex items-center gap-3 text-sm text-gray-600">
+                            <span className="bg-gray-100 px-2 py-0.5 rounded text-xs">{selectedCustomer.phoneNumber}</span>
+                            <span className="text-green-700 font-bold bg-green-100 px-2 py-0.5 rounded text-xs">
+                                {selectedCustomer.loyaltyPoints} نقطة
+                            </span>
+                        </div>
+                    </div>
+                    <button
+                        onClick={() => selectCustomer(null)}
+                        className="text-gray-400 hover:text-red-500 transition-colors p-1"
+                    >
+                        ✕
+                    </button>
+                </div>
+
+                {/* Redemption Section */}
+                <div className="bg-white p-3 rounded-lg border border-gray-100">
+                    <div className="flex justify-between items-center mb-2">
+                        <span className="text-sm font-bold text-gray-700">استخدام النقاط</span>
+                        <span className="text-xs text-[#556c33] font-medium bg-[#556c33]/10 px-2 py-1 rounded">
+                            رصيد: {Math.floor(selectedCustomer.loyaltyPoints / 150)} ريال
+                        </span>
+                    </div>
+
+                    {maxRedeem > 0 ? (
+                        <div className="space-y-3">
+                            <input
+                                type="range"
+                                min="0"
+                                max={maxRedeem}
+                                step="1"
+                                value={discountAmount}
+                                onChange={(e) => setDiscountAmount(parseInt(e.target.value))}
+                                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-[#556c33]"
+                            />
+                            <div className="flex justify-between items-center text-sm">
+                                <span className="text-gray-500">خصم: <b className="text-[#556c33] text-base">{discountAmount} ريال</b></span>
+                                <span className="text-gray-400 text-xs">(-{discountAmount * 150} نقطة)</span>
+                            </div>
+                        </div>
+                    ) : (
+                        <p className="text-xs text-center text-gray-400 py-1">
+                            {selectedCustomer.loyaltyPoints < 150
+                                ? 'الرصيد غير كافي (الحد الأدنى 150 نقطة)'
+                                : 'لا يمكن استخدام النقاط (السلة فارغة أو المبلغ بسيط)'}
+                        </p>
+                    )}
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="mb-3 relative group">
+            {!showSearch ? (
+                <button
+                    onClick={() => setShowSearch(true)}
+                    className="w-full py-3 bg-white border-2 border-dashed border-gray-300 text-gray-500 rounded-xl text-sm font-medium hover:border-[#556c33] hover:text-[#556c33] hover:bg-green-50/50 transition-all flex items-center justify-center gap-2"
+                >
+                    <span className="text-xl">🔍</span>
+                    بحث عن عميل / تسجيل نقاط
+                </button>
+            ) : (
+                <div className="relative animate-fade-in">
+                    <div className="relative">
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-lg">🔍</span>
+                        <input
+                            type="text"
+                            value={searchTerm}
+                            onChange={(e) => handleSearch(e.target.value)}
+                            placeholder="اسم العميل أو رقم الجوال..."
+                            className="w-full pl-10 pr-10 py-3 bg-white border-2 border-[#556c33] rounded-xl text-sm focus:outline-none shadow-sm font-medium"
+                            autoFocus
+                        />
+                        <button
+                            onClick={() => { setShowSearch(false); setSearchTerm(''); setSearchResults([]); }}
+                            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500"
+                        >
+                            ✕
+                        </button>
+                    </div>
+
+                    {/* Search Results Dropdown */}
+                    {(searchResults.length > 0 || searching) && (
+                        <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl border border-gray-100 max-h-60 overflow-y-auto z-50 divide-y divide-gray-50">
+                            {searching ? (
+                                <div className="p-4 text-center text-sm text-gray-500 flex items-center justify-center gap-2">
+                                    <div className="w-4 h-4 border-2 border-[#556c33] border-t-transparent rounded-full animate-spin"></div>
+                                    جاري البحث...
+                                </div>
+                            ) : (
+                                searchResults.map(customer => (
+                                    <button
+                                        key={customer.id}
+                                        onClick={() => { selectCustomer(customer); setShowSearch(false); setSearchTerm(''); }}
+                                        className="w-full text-right p-3 hover:bg-green-50 transition-colors flex justify-between items-center group/item"
+                                    >
+                                        <div>
+                                            <p className="font-bold text-gray-800 text-sm group-hover/item:text-[#556c33] transition-colors">{customer.name}</p>
+                                            <p className="text-xs text-gray-400 font-mono mt-0.5">{customer.phoneNumber}</p>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className="block text-xs font-bold text-[#556c33] bg-[#556c33]/10 px-2 py-1 rounded-lg">
+                                                {customer.loyaltyPoints} pts
+                                            </span>
+                                        </div>
+                                    </button>
+                                ))
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
 
 export function POSPage() {
     const { productsWithYield, loading: productsLoading } = useProducts();
-    const { cart, cartTotal, addToCart, updateCartQuantity, clearCart, completeSale, loadCart, error } = useSales();
+    const { cart, cartTotal, addToCart, updateCartQuantity, clearCart, completeSale, loadCart, selectCustomer, selectedCustomer, error } = useSales();
     const { logActivity } = useActivity();
     const { activeOrders, createOrder, updateOrder, deleteOrder } = useOrders();
     const { categories } = useProducts(); // Get categories
@@ -104,7 +269,7 @@ export function POSPage() {
 
     const handleParkOrder = () => {
         if (!carNumber.trim()) return;
-        createOrder(carNumber, cart);
+        createOrder(carNumber, cart, selectedCustomer?.id);
         clearCart();
         setCarNumber('');
         setShowCarInput(false);
@@ -120,14 +285,29 @@ export function POSPage() {
         }
     };
 
-    const handleResumeOrder = (orderId: string) => {
+    const handleResumeOrder = async (orderId: string) => {
         const order = activeOrders.find(o => o.id === orderId);
         if (order) {
-            // If current cart has items and is NOT the order we are resuming, warn or park?
-            // For simplicity, we'll just overwrite for now, assuming user knows.
-            //Ideally we should prompt "Park current cart?" if unsaved.
             loadCart(order.items);
             setCurrentOrderId(order.id);
+
+            // Link Customer if exists
+            if (order.customerId) {
+                try {
+                    const customer = await database.getCustomers().then(customers => customers.find(c => c.id === order.customerId));
+                    // Optimization: Use getCustomerById if available, but currently we only have getCustomers or getCustomerByPhone in interface.
+                    // Actually, we don't have getCustomerById in IDatabase interface yet. 
+                    // Let's use getCustomers() and find.
+                    if (customer) {
+                        selectCustomer(customer);
+                    }
+                } catch (err) {
+                    console.error("Failed to load customer for order", err);
+                }
+            } else {
+                selectCustomer(null);
+            }
+
             setShowActiveOrders(false);
             setShowCart(true);
         }
@@ -205,8 +385,8 @@ export function POSPage() {
                 <button
                     onClick={() => setSelectedCategory('All')}
                     className={`px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition-colors ${selectedCategory === 'All'
-                            ? 'bg-[#556c33] text-white shadow-md'
-                            : 'bg-white text-gray-600 hover:bg-gray-200'
+                        ? 'bg-[#556c33] text-white shadow-md'
+                        : 'bg-white text-gray-600 hover:bg-gray-200'
                         }`}
                 >
                     الكل
@@ -216,8 +396,8 @@ export function POSPage() {
                         key={cat}
                         onClick={() => setSelectedCategory(cat)}
                         className={`px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition-colors ${selectedCategory === cat
-                                ? 'bg-[#556c33] text-white shadow-md'
-                                : 'bg-white text-gray-600 hover:bg-gray-200'
+                            ? 'bg-[#556c33] text-white shadow-md'
+                            : 'bg-white text-gray-600 hover:bg-gray-200'
                             }`}
                     >
                         {cat}
@@ -378,6 +558,9 @@ export function POSPage() {
                                     مسح الكل
                                 </button>
                             </div>
+
+                            {/* Customer Selection */}
+                            <CustomerSelection />
 
                             {/* Cart Items */}
                             <div className="space-y-3 max-h-60 overflow-y-auto mb-4">
@@ -545,7 +728,7 @@ export function POSPage() {
                                     >
                                         <button
                                             onClick={(e) => handleDeleteOrder(order.id, e)}
-                                            className="absolute top-2 left-2 p-2 bg-red-50 text-red-500 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-100 hover:text-red-700 z-10"
+                                            className="absolute top-2 left-2 p-2 bg-red-50 text-red-500 rounded-lg transition-opacity hover:bg-red-100 hover:text-red-700 z-10"
                                             title="حذف الطلب"
                                         >
                                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -610,4 +793,4 @@ export function POSPage() {
     );
 }
 
-export default POSPage;
+

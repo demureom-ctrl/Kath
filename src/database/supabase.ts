@@ -1,6 +1,6 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { IDatabase } from '../types/database';
-import { Ingredient, Product, Sale, Purchase, InventoryDeduction, User, ActiveOrder, OrderStatus } from '../types';
+import { Ingredient, Product, Sale, Purchase, InventoryDeduction, User, ActiveOrder, OrderStatus, Customer } from '../types';
 
 export class SupabaseDatabase implements IDatabase {
     private client: SupabaseClient;
@@ -263,7 +263,10 @@ export class SupabaseDatabase implements IDatabase {
                 total: sale.total,
                 payment_method: sale.paymentMethod,
                 status: sale.status || 'completed',
-                date: sale.date
+                date: sale.date,
+                customer_id: sale.customerId,
+                discount_amount: sale.discountAmount,
+                points_redeemed: sale.pointsRedeemed
             }])
             .select()
             .single();
@@ -401,6 +404,80 @@ export class SupabaseDatabase implements IDatabase {
     }
 
     // ==========================================
+    // Customer Management
+    // ==========================================
+    async getCustomers(): Promise<Customer[]> {
+        const { data, error } = await this.client
+            .from('customers')
+            .select('*')
+            .order('name', { ascending: true });
+
+        if (error) throw error;
+        const customers = data.map(this.mapCustomer);
+
+        // Calculate dynamic points based on expiration (6 months)
+        return customers.map(c => this.applyPointsExpiration(c));
+    }
+
+    async getCustomerByPhone(phone: string): Promise<Customer | null> {
+        const { data, error } = await this.client
+            .from('customers')
+            .select('*')
+            .eq('phone_number', phone)
+            .single();
+
+        if (error) return null;
+        const customer = this.mapCustomer(data);
+        return this.applyPointsExpiration(customer);
+    }
+    async addCustomer(customer: Omit<Customer, 'id' | 'createdAt' | 'updatedAt'>): Promise<Customer> {
+        const { data, error } = await this.client
+            .from('customers')
+            .insert([{
+                name: customer.name,
+                phone_number: customer.phoneNumber,
+                loyalty_points: customer.loyaltyPoints,
+                total_spent: customer.totalSpent,
+                last_transaction_date: new Date()
+            }])
+            .select()
+            .single();
+
+        if (error) throw error;
+        return this.mapCustomer(data);
+    }
+
+    async updateCustomer(id: string, updates: Partial<Omit<Customer, 'id' | 'createdAt'>>): Promise<Customer> {
+        const dbUpdates: any = {};
+        if (updates.name) dbUpdates.name = updates.name;
+        if (updates.phoneNumber) dbUpdates.phone_number = updates.phoneNumber;
+        if (updates.loyaltyPoints !== undefined) dbUpdates.loyalty_points = updates.loyaltyPoints;
+        if (updates.totalSpent !== undefined) dbUpdates.total_spent = updates.totalSpent;
+        if (updates.lastTransactionDate) dbUpdates.last_transaction_date = updates.lastTransactionDate;
+
+        dbUpdates.updated_at = new Date();
+
+        const { data, error } = await this.client
+            .from('customers')
+            .update(dbUpdates)
+            .eq('id', id)
+            .select()
+            .single();
+
+        if (error) throw error;
+        return this.mapCustomer(data);
+    }
+
+    async deleteCustomer(id: string): Promise<void> {
+        const { error } = await this.client
+            .from('customers')
+            .delete()
+            .eq('id', id);
+
+        if (error) throw error;
+    }
+
+    // ==========================================
     // Mappers
     // ==========================================
     private mapIngredient(row: any): Ingredient {
@@ -440,6 +517,9 @@ export class SupabaseDatabase implements IDatabase {
             total: Number(row.total),
             paymentMethod: row.payment_method,
             status: row.status,
+            customerId: row.customer_id,
+            discountAmount: Number(row.discount_amount || 0),
+            pointsRedeemed: Number(row.points_redeemed || 0),
             items: row.sale_items?.map((si: any) => ({
                 productId: si.product_id,
                 productName: si.product_name,
@@ -471,6 +551,31 @@ export class SupabaseDatabase implements IDatabase {
         };
     }
 
+    private mapCustomer(row: any): Customer {
+        return {
+            id: row.id,
+            name: row.name,
+            phoneNumber: row.phone_number,
+            loyaltyPoints: Number(row.loyalty_points),
+            totalSpent: Number(row.total_spent),
+            createdAt: new Date(row.created_at),
+            updatedAt: new Date(row.updated_at),
+            lastTransactionDate: row.last_transaction_date ? new Date(row.last_transaction_date) : undefined
+        };
+    }
+
+    private applyPointsExpiration(customer: Customer): Customer {
+        if (!customer.lastTransactionDate) return customer;
+
+        const sixMonthsAgo = new Date();
+        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+        if (customer.lastTransactionDate < sixMonthsAgo) {
+            return { ...customer, loyaltyPoints: 0 };
+        }
+        return customer;
+    }
+
     // ==========================================
     // Orders (Kitchen Queue)
     // ==========================================
@@ -492,6 +597,7 @@ export class SupabaseDatabase implements IDatabase {
                 items: order.items,
                 status: order.status,
                 total: order.total,
+                customer_id: order.customerId
             })
             .select()
             .single();
@@ -528,7 +634,8 @@ export class SupabaseDatabase implements IDatabase {
             items: row.items,
             status: row.status,
             total: row.total,
-            createdAt: new Date(row.created_at)
+            createdAt: new Date(row.created_at),
+            customerId: row.customer_id
         };
     }
 

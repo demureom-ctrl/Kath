@@ -53,6 +53,9 @@ export interface Sale {
     total: number;
     paymentMethod: 'cash' | 'card';
     status?: string;
+    customerId?: string;
+    discountAmount?: number;
+    pointsRedeemed?: number;
 }
 
 // Cart Item (for POS)
@@ -102,6 +105,7 @@ export interface ActiveOrder {
     status: OrderStatus;
     total: number;
     createdAt: Date;
+    customerId?: string; // Link to Customer profile
 }
 
 // User roles
@@ -114,4 +118,16 @@ export interface User {
     name: string;
     role: UserRole;
     password?: string; // Optional for display, required for storage
+}
+
+// Customer Implementation
+export interface Customer {
+    id: string;
+    name: string;
+    phoneNumber: string;
+    loyaltyPoints: number;
+    totalSpent: number;
+    lastTransactionDate?: Date;
+    createdAt: Date;
+    updatedAt: Date;
 }

@@ -3,7 +3,7 @@
 // ==========================================
 
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
-import { Sale, SaleItem, CartItem, Product } from '../types';
+import { Sale, SaleItem, CartItem, Product, Customer } from '../types';
 import { database } from '../database';
 import { calculateDeductions, canCompleteSale, calculateCartTotal } from '../utils/calculations';
 import { useInventory } from './InventoryContext';
@@ -25,6 +25,11 @@ interface SalesContextType {
     getTodaySales: () => Sale[];
     getTodayRevenue: () => number;
     loadCart: (items: CartItem[]) => void;
+    // Customer & Loyalty
+    selectedCustomer: Customer | null;
+    selectCustomer: (customer: Customer | null) => void;
+    discountAmount: number;
+    setDiscountAmount: (amount: number) => void;
 }
 
 const SalesContext = createContext<SalesContextType | undefined>(undefined);
@@ -35,10 +40,32 @@ export function SalesProvider({ children }: { children: ReactNode }) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
+    // Loyalty State
+    const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+    const [redeemAmount, setRedeemAmount] = useState(0); // Amount in SAR
+
     const { ingredients, deductInventory, refreshIngredients } = useInventory();
     const { products } = useProducts();
 
-    const cartTotal = calculateCartTotal(cart);
+    const cartTotalRaw = calculateCartTotal(cart);
+    const cartTotal = Math.max(0, cartTotalRaw - redeemAmount);
+
+    // Reset redemption when cart or customer changes to avoid invalid states
+    useEffect(() => {
+        if (!selectedCustomer) {
+            setRedeemAmount(0);
+        } else {
+            // Ensure we don't redeem more than total or available points
+            // 150 points = 1 SAR discount
+            const maxPointsValue = Math.floor(selectedCustomer.loyaltyPoints / 150);
+            const maxCartValue = Math.floor(cartTotalRaw); // Cannot redeem more than the cart total
+            const maxRedeem = Math.min(maxPointsValue, maxCartValue);
+
+            if (redeemAmount > maxRedeem) {
+                setRedeemAmount(maxRedeem);
+            }
+        }
+    }, [cartTotalRaw, selectedCustomer, redeemAmount]);
 
     const refreshSales = useCallback(async () => {
         try {
@@ -87,10 +114,17 @@ export function SalesProvider({ children }: { children: ReactNode }) {
 
     const clearCart = useCallback(() => {
         setCart([]);
+        setSelectedCustomer(null);
+        setRedeemAmount(0);
     }, []);
 
     const loadCart = useCallback((items: CartItem[]) => {
         setCart(items);
+    }, []);
+
+    const selectCustomer = useCallback((customer: Customer | null) => {
+        setSelectedCustomer(customer);
+        setRedeemAmount(0);
     }, []);
 
     const completeSale = useCallback(async (paymentMethod: 'cash' | 'card'): Promise<Sale | null> => {
@@ -123,11 +157,18 @@ export function SalesProvider({ children }: { children: ReactNode }) {
             }));
 
             // Create sale record
+            // We need to extend Sale type to support customer info if we want to save it there directly,
+            // or just rely on the customer update.
+            // For now, let's just update the customer.
+
             const sale: Omit<Sale, 'id'> = {
                 date: new Date(),
                 items: saleItems,
-                total: cartTotal,
+                total: cartTotal, // This is explicitly the discounted total
                 paymentMethod,
+                customerId: selectedCustomer?.id,
+                discountAmount: redeemAmount,
+                pointsRedeemed: redeemAmount * 150
             };
 
             // Deduct inventory first
@@ -135,6 +176,36 @@ export function SalesProvider({ children }: { children: ReactNode }) {
 
             // Add sale to database
             const newSale = await database.addSale(sale);
+
+            // --- Loyalty Logic ---
+            if (selectedCustomer) {
+                try {
+                    let pointsChange = 0;
+
+                    // 1. Redeem Points (1 SAR = 150 Points)
+                    if (redeemAmount > 0) {
+                        pointsChange -= (redeemAmount * 150);
+                    }
+
+                    // 2. Earn Points: 1 SAR = 10 Points
+                    // Earn ONLY on the amount paid (cartTotal)
+                    const earnedPoints = Math.floor(cartTotal * 10);
+                    pointsChange += earnedPoints;
+
+                    // Update Customer
+                    await database.updateCustomer(selectedCustomer.id, {
+                        loyaltyPoints: Math.max(0, selectedCustomer.loyaltyPoints + pointsChange),
+                        totalSpent: selectedCustomer.totalSpent + cartTotal,
+                        lastTransactionDate: new Date()
+                    });
+                } catch (loyaltyError) {
+                    console.error("Failed to update loyalty points:", loyaltyError);
+                    // We don't throw here to ensure the sale is still marked as completed in the UI
+                    // You might want to show a toast warning here in a production app
+                }
+            }
+            // ---------------------
+
             setSales(prev => [newSale, ...prev]);
 
             // Clear cart
@@ -148,7 +219,7 @@ export function SalesProvider({ children }: { children: ReactNode }) {
             await refreshIngredients();
             return null;
         }
-    }, [cart, cartTotal, ingredients, products, deductInventory, clearCart, refreshIngredients]);
+    }, [cart, cartTotal, ingredients, products, deductInventory, clearCart, refreshIngredients, selectedCustomer, redeemAmount]);
 
     const getSaleById = useCallback((id: string) => {
         return sales.find(sale => sale.id === id);
@@ -181,6 +252,10 @@ export function SalesProvider({ children }: { children: ReactNode }) {
             getTodaySales,
             getTodayRevenue,
             loadCart,
+            selectedCustomer,
+            selectCustomer,
+            discountAmount: redeemAmount, // Expose as discountAmount to match interface (renamed from redeemPoints)
+            setDiscountAmount: setRedeemAmount, // Expose setter
         }}>
             {children}
         </SalesContext.Provider>

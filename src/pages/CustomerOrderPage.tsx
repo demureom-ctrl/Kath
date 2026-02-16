@@ -3,9 +3,9 @@
 // ==========================================
 
 import { useState, useEffect, useMemo } from 'react';
-import { Product, CartItem } from '../types';
+import { calculateCartTotal, calculateMaxYield } from '../utils/calculations';
+import { Product, CartItem, Ingredient } from '../types';
 import database from '../database';
-import { calculateCartTotal } from '../utils/calculations';
 
 // Session duration in milliseconds (5 minutes)
 const SESSION_DURATION = 5 * 60 * 1000;
@@ -16,13 +16,16 @@ interface CustomerOrderPageProps {
 
 export function CustomerOrderPage({ token }: CustomerOrderPageProps) {
     const [products, setProducts] = useState<Product[]>([]);
+    const [ingredients, setIngredients] = useState<Ingredient[]>([]);
     const [cart, setCart] = useState<CartItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [sessionValid, setSessionValid] = useState(false);
     const [timeLeft, setTimeLeft] = useState(0);
     const [orderSubmitted, setOrderSubmitted] = useState(false);
     const [customerName, setCustomerName] = useState('');
+    const [phoneNumber, setPhoneNumber] = useState('');
     const [showNameModal, setShowNameModal] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     // Parse token and validate session
     useEffect(() => {
@@ -73,23 +76,35 @@ export function CustomerOrderPage({ token }: CustomerOrderPageProps) {
         return () => clearInterval(interval);
     }, [token]);
 
-    // Load products
+    // Load products and ingredients
     useEffect(() => {
-        const loadProducts = async () => {
+        const loadData = async () => {
             try {
-                const fetchedProducts = await database.getProducts();
+                const [fetchedProducts, fetchedIngredients] = await Promise.all([
+                    database.getProducts(),
+                    database.getIngredients()
+                ]);
                 setProducts(fetchedProducts.filter(p => p.isActive));
+                setIngredients(fetchedIngredients);
             } catch (error) {
-                console.error('Failed to load products:', error);
+                console.error('Failed to load data:', error);
             } finally {
                 setLoading(false);
             }
         };
 
         if (sessionValid) {
-            loadProducts();
+            loadData();
         }
     }, [sessionValid]);
+
+    // Calculate yield for products
+    const productsWithYield = useMemo(() => {
+        return products.map(product => ({
+            ...product,
+            maxYield: calculateMaxYield(product, ingredients)
+        }));
+    }, [products, ingredients]);
 
     // Format time remaining
     const formatTime = (ms: number) => {
@@ -100,9 +115,20 @@ export function CustomerOrderPage({ token }: CustomerOrderPageProps) {
 
     // Add to cart
     const addToCart = (product: Product) => {
+        // Find yield info
+        const productWithYield = productsWithYield.find(p => p.id === product.id);
+        const maxYield = productWithYield?.maxYield || 0;
+
+        if (maxYield === 0) return;
+
         setCart(prev => {
             const existing = prev.find(item => item.product.id === product.id);
             if (existing) {
+                // Check if adding 1 more exceeds limit
+                if (existing.quantity >= maxYield) {
+                    alert('عذراً، الكمية المطلوبة غير متوفرة');
+                    return prev;
+                }
                 return prev.map(item =>
                     item.product.id === product.id
                         ? { ...item, quantity: item.quantity + 1 }
@@ -133,16 +159,48 @@ export function CustomerOrderPage({ token }: CustomerOrderPageProps) {
 
     // Submit order
     const submitOrder = async () => {
-        if (cart.length === 0 || !customerName.trim()) return;
+        if (cart.length === 0 || !customerName.trim() || !phoneNumber.trim()) return;
 
+        // Validation
+        if (phoneNumber.trim().length < 8) {
+            alert('رقم الجوال يجب أن يكون 8 أرقام على الأقل');
+            return;
+        }
+
+        setIsSubmitting(true);
         try {
-            // Create order via database API (Supabase for cross-device sync)
+            // 1. Find or Create Customer
+            let customerId: string | undefined;
+
+            // Clean phone number
+            const cleanPhone = phoneNumber.trim();
+
+            try {
+                const existingCustomer = await database.getCustomerByPhone(cleanPhone);
+                if (existingCustomer) {
+                    customerId = existingCustomer.id;
+                } else {
+                    // Create new customer
+                    const newCustomer = await database.addCustomer({
+                        name: customerName.trim(), // Using name provided for order as customer name initially
+                        phoneNumber: cleanPhone,
+                        loyaltyPoints: 0,
+                        totalSpent: 0
+                    });
+                    customerId = newCustomer.id;
+                }
+            } catch (err) {
+                console.error('Error handling customer registration:', err);
+            }
+
+            // 2. Create order via database API
             await database.addOrder({
                 customerName: customerName.trim(),
                 items: cart,
                 status: 'pending',
                 total: cartTotal,
                 createdAt: new Date(),
+                customerId: customerId
             });
 
             setOrderSubmitted(true);
@@ -150,6 +208,8 @@ export function CustomerOrderPage({ token }: CustomerOrderPageProps) {
         } catch (error) {
             console.error('Failed to submit order:', error);
             alert('حدث خطأ في إرسال الطلب');
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -224,15 +284,27 @@ export function CustomerOrderPage({ token }: CustomerOrderPageProps) {
 
             {/* Products Grid */}
             <div className="p-4 grid grid-cols-2 gap-3">
-                {products.map(product => {
+                {productsWithYield.map(product => {
                     const inCart = cart.find(item => item.product.id === product.id);
+                    const isOutOfStock = product.maxYield === 0;
+
                     return (
                         <div
                             key={product.id}
-                            onClick={() => addToCart(product)}
-                            className={`bg-white rounded-2xl p-4 shadow-sm border-2 transition-all cursor-pointer ${inCart ? 'border-[#556c33] bg-green-50' : 'border-transparent'
+                            onClick={() => !isOutOfStock && addToCart(product)}
+                            className={`bg-white rounded-2xl p-4 shadow-sm border-2 transition-all cursor-pointer relative overflow-hidden ${isOutOfStock
+                                ? 'opacity-60 grayscale border-gray-200 cursor-not-allowed'
+                                : inCart
+                                    ? 'border-[#556c33] bg-green-50'
+                                    : 'border-transparent'
                                 }`}
                         >
+                            {isOutOfStock && (
+                                <div className="absolute top-0 right-0 bg-red-500 text-white text-xs font-bold px-3 py-1 rounded-bl-xl z-10">
+                                    نفدت الكمية
+                                </div>
+                            )}
+
                             <div className="text-3xl mb-2">☕</div>
                             <h3 className="font-bold text-gray-800 text-sm mb-1">
                                 {product.name}
@@ -240,7 +312,8 @@ export function CustomerOrderPage({ token }: CustomerOrderPageProps) {
                             <p className="text-[#556c33] font-bold">
                                 {product.price.toFixed(2)} ر.س
                             </p>
-                            {inCart && (
+
+                            {!isOutOfStock && inCart && (
                                 <div className="mt-2 flex items-center justify-center gap-3">
                                     <button
                                         onClick={(e) => { e.stopPropagation(); updateQuantity(product.id, -1); }}
@@ -250,7 +323,15 @@ export function CustomerOrderPage({ token }: CustomerOrderPageProps) {
                                     </button>
                                     <span className="font-bold">{inCart.quantity}</span>
                                     <button
-                                        onClick={(e) => { e.stopPropagation(); updateQuantity(product.id, 1); }}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            // Check maxYield vs current cart quantity
+                                            if (inCart.quantity < product.maxYield) {
+                                                updateQuantity(product.id, 1);
+                                            } else {
+                                                alert('عذراً، الكمية المطلوبة غير متوفرة');
+                                            }
+                                        }}
                                         className="w-8 h-8 bg-[#556c33] text-white rounded-full font-bold"
                                     >
                                         +
@@ -287,34 +368,51 @@ export function CustomerOrderPage({ token }: CustomerOrderPageProps) {
                 <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
                     <div className="bg-white rounded-3xl p-6 w-full max-w-sm">
                         <h2 className="text-xl font-bold text-gray-800 mb-4 text-center">
-                            أدخل رقم السيارة أو الاسم
+                            بيانات الطلب
                         </h2>
-                        <input
-                            type="text"
-                            value={customerName}
-                            onChange={(e) => setCustomerName(e.target.value)}
-                            placeholder="مثال: ABC 123"
-                            className="w-full px-4 py-3 border border-gray-300 rounded-xl text-center text-lg mb-4"
-                            autoFocus
-                        />
+
+                        <div className="space-y-4 mb-6">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">رقم الجوال (للولاء)</label>
+                                <input
+                                    type="tel"
+                                    value={phoneNumber}
+                                    onChange={(e) => setPhoneNumber(e.target.value)}
+                                    placeholder="05xxxxxxxx"
+                                    className="w-full px-4 py-3 border border-gray-300 rounded-xl text-center text-lg focus:outline-none focus:border-[#556c33]"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">رقم السيارة / اسمك</label>
+                                <input
+                                    type="text"
+                                    value={customerName}
+                                    onChange={(e) => setCustomerName(e.target.value)}
+                                    placeholder="مثال: ABC 123"
+                                    className="w-full px-4 py-3 border border-gray-300 rounded-xl text-center text-lg focus:outline-none focus:border-[#556c33]"
+                                />
+                            </div>
+                        </div>
+
                         <div className="flex gap-3">
                             <button
                                 onClick={() => setShowNameModal(false)}
+                                disabled={isSubmitting}
                                 className="flex-1 py-3 bg-gray-200 text-gray-700 rounded-xl font-medium"
                             >
                                 إلغاء
                             </button>
                             <button
-                                onClick={() => {
-                                    if (customerName.trim()) {
-                                        setShowNameModal(false);
-                                        submitOrder();
-                                    }
-                                }}
-                                disabled={!customerName.trim()}
-                                className="flex-1 py-3 bg-[#556c33] text-white rounded-xl font-bold disabled:opacity-50"
+                                onClick={submitOrder}
+                                disabled={!customerName.trim() || phoneNumber.trim().length < 8 || isSubmitting}
+                                className="flex-1 py-3 bg-[#556c33] text-white rounded-xl font-bold disabled:opacity-50 flex items-center justify-center"
                             >
-                                تأكيد
+                                {isSubmitting ? (
+                                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                ) : (
+                                    'تأكيد الطلب'
+                                )}
                             </button>
                         </div>
                     </div>

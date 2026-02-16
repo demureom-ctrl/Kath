@@ -3,7 +3,7 @@
 // Implement this interface for Mock DB or Supabase
 // ==========================================
 
-import { User, ActiveOrder, OrderStatus } from './index';
+import { User, ActiveOrder, OrderStatus, Customer } from './index';
 import type { Ingredient, Product, Sale, InventoryDeduction, Purchase } from './index';
 
 export interface IDatabase {
@@ -67,6 +67,15 @@ export interface IDatabase {
     getCategories(): Promise<string[]>;
     addCategory(name: string): Promise<string>;
     deleteCategory(name: string): Promise<void>;
+
+    // ==========================================
+    // Customer Management
+    // ==========================================
+    getCustomers(): Promise<Customer[]>;
+    getCustomerByPhone(phone: string): Promise<Customer | null>;
+    addCustomer(customer: Omit<Customer, 'id' | 'createdAt' | 'updatedAt'>): Promise<Customer>;
+    updateCustomer(id: string, data: Partial<Omit<Customer, 'id' | 'createdAt'>>): Promise<Customer>;
+    deleteCustomer(id: string): Promise<void>;
 }
 
 // Database configuration type (for future Supabase integration)

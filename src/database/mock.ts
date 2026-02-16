@@ -3,7 +3,7 @@
 // ==========================================
 
 import { IDatabase } from '../types/database';
-import { Ingredient, Product, Sale, InventoryDeduction, Purchase, User, ActiveOrder, OrderStatus } from '../types';
+import { Ingredient, Product, Sale, InventoryDeduction, Purchase, User, ActiveOrder, OrderStatus, Customer } from '../types';
 
 const STORAGE_KEYS = {
     INGREDIENTS: 'coffee_shop_ingredients',
@@ -11,6 +11,7 @@ const STORAGE_KEYS = {
     SALES: 'coffee_shop_sales',
     PURCHASES: 'coffee_shop_purchases',
     USERS: 'coffee_shop_users_list',
+    CUSTOMERS: 'coffee_shop_customers',
 };
 
 // ==========================================
@@ -35,13 +36,14 @@ function getFromStorage<T>(key: string, defaultValue: T): T {
             })) as T;
         }
 
-        // Convert dates for ingredients, products, and purchases
-        if (key === STORAGE_KEYS.INGREDIENTS || key === STORAGE_KEYS.PRODUCTS || key === STORAGE_KEYS.PURCHASES) {
+        // Convert dates for ingredients, products, purchases, and customers
+        if (key === STORAGE_KEYS.INGREDIENTS || key === STORAGE_KEYS.PRODUCTS || key === STORAGE_KEYS.PURCHASES || key === STORAGE_KEYS.CUSTOMERS) {
             return parsed.map((item: any) => ({
                 ...item,
                 createdAt: item.createdAt ? new Date(item.createdAt) : undefined,
                 updatedAt: item.updatedAt ? new Date(item.updatedAt) : undefined,
                 date: item.date ? new Date(item.date) : undefined,
+                lastTransactionDate: item.lastTransactionDate ? new Date(item.lastTransactionDate) : undefined,
             })) as T;
         }
 
@@ -334,6 +336,9 @@ class MockDatabase implements IDatabase {
         const newSale: Sale = {
             ...sale,
             id: generateId(),
+            customerId: sale.customerId,
+            discountAmount: sale.discountAmount || 0,
+            pointsRedeemed: sale.pointsRedeemed || 0
         };
         this.sales.push(newSale);
         this.saveSales();
@@ -465,6 +470,74 @@ class MockDatabase implements IDatabase {
         const categories = await this.getCategories();
         const filtered = categories.filter(c => c !== name);
         saveToStorage('coffee_shop_categories', filtered);
+    }
+
+    // ==========================================
+    // Customer Management
+    // ==========================================
+    async getCustomers(): Promise<Customer[]> {
+        const customers = getFromStorage<Customer[]>(STORAGE_KEYS.CUSTOMERS, []);
+        return customers.map(c => this.applyPointsExpiration(c));
+    }
+
+    async getCustomerByPhone(phone: string): Promise<Customer | null> {
+        const customers = await this.getCustomers();
+        return customers.find(c => c.phoneNumber === phone) || null;
+    }
+
+    async addCustomer(customer: Omit<Customer, 'id' | 'createdAt' | 'updatedAt'>): Promise<Customer> {
+        const customers = getFromStorage<Customer[]>(STORAGE_KEYS.CUSTOMERS, []);
+
+        // Check for duplicates
+        if (customers.some(c => c.phoneNumber === customer.phoneNumber)) {
+            throw new Error('Customer with this phone number already exists');
+        }
+
+        const now = new Date();
+        const newCustomer: Customer = {
+            ...customer,
+            id: generateId(),
+            createdAt: now,
+            updatedAt: now,
+        };
+
+        customers.push(newCustomer);
+        saveToStorage(STORAGE_KEYS.CUSTOMERS, customers);
+        return newCustomer;
+    }
+
+    async updateCustomer(id: string, data: Partial<Omit<Customer, 'id' | 'createdAt'>>): Promise<Customer> {
+        const customers = getFromStorage<Customer[]>(STORAGE_KEYS.CUSTOMERS, []);
+        const index = customers.findIndex(c => c.id === id);
+
+        if (index === -1) throw new Error('Customer not found');
+
+        customers[index] = {
+            ...customers[index],
+            ...data,
+            updatedAt: new Date()
+        };
+
+        saveToStorage(STORAGE_KEYS.CUSTOMERS, customers);
+        return customers[index];
+    }
+
+    async deleteCustomer(id: string): Promise<void> {
+        const customers = getFromStorage<Customer[]>(STORAGE_KEYS.CUSTOMERS, []);
+        const filtered = customers.filter(c => c.id !== id);
+        saveToStorage(STORAGE_KEYS.CUSTOMERS, filtered);
+    }
+
+    private applyPointsExpiration(customer: Customer): Customer {
+        if (!customer.lastTransactionDate) return customer;
+
+        const sixMonthsAgo = new Date();
+        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+        if (new Date(customer.lastTransactionDate) < sixMonthsAgo) {
+            return { ...customer, loyaltyPoints: 0 };
+        }
+        return customer;
     }
 }
 

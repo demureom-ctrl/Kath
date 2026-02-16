@@ -19,8 +19,9 @@ import { PurchasesPage } from './pages/PurchasesPage';
 import { LoginPage } from './pages/LoginPage';
 import { QRGeneratorPage } from './pages/QRGeneratorPage';
 import { CustomerOrderPage } from './pages/CustomerOrderPage';
+import { CustomersPage } from './pages/CustomersPage';
 
-type TabId = 'pos' | 'kitchen' | 'inventory' | 'menu' | 'reports' | 'users' | 'waste' | 'purchases' | 'qr';
+type TabId = 'pos' | 'kitchen' | 'inventory' | 'menu' | 'reports' | 'users' | 'waste' | 'purchases' | 'qr' | 'customers';
 
 function AppContent() {
   const [activeTab, setActiveTab] = useState<TabId>('pos');
@@ -80,6 +81,8 @@ function AppContent() {
         return <PurchasesPage />;
       case 'qr':
         return <QRGeneratorPage />;
+      case 'customers':
+        return <CustomersPage />;
       default:
         return <POSPage />;
     }

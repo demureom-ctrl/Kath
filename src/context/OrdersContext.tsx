@@ -11,7 +11,7 @@ import database from '../database';
 interface OrdersContextType {
     activeOrders: ActiveOrder[];
     loading: boolean;
-    createOrder: (customerName: string, items: CartItem[]) => Promise<void>;
+    createOrder: (customerName: string, items: CartItem[], customerId?: string) => Promise<void>;
     updateOrder: (id: string, items: CartItem[]) => void;
     updateOrderStatus: (id: string, status: OrderStatus) => Promise<void>;
     deleteOrder: (id: string) => Promise<void>;
@@ -53,7 +53,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         return () => clearInterval(pollInterval);
     }, [refreshOrders]);
 
-    const createOrder = async (customerName: string, items: CartItem[]) => {
+    const createOrder = async (customerName: string, items: CartItem[], customerId?: string) => {
         try {
             await database.addOrder({
                 customerName,
@@ -61,6 +61,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
                 status: 'pending',
                 total: calculateCartTotal(items),
                 createdAt: new Date(),
+                customerId
             });
             await refreshOrders();
         } catch (error) {

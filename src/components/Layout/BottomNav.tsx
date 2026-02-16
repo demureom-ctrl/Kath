@@ -111,7 +111,8 @@ const navItems: NavItem[] = [
     { id: 'purchases', label: 'المشتريات', icon: <PurchaseIcon />, adminOnly: true },
     { id: 'menu', label: 'القائمة', icon: <MenuIcon />, adminOnly: true },
     { id: 'reports', label: 'التقارير', icon: <ReportsIcon />, adminOnly: true },
-    { id: 'users', label: 'المستخدمين', icon: <UsersIcon />, adminOnly: true },
+    { id: 'customers', label: 'العملاء', icon: <UsersIcon />, adminOnly: true },
+    { id: 'users', label: 'الموظفين', icon: <UsersIcon />, adminOnly: true },
     { id: 'waste', label: 'الهدر', icon: <WasteIcon />, adminOnly: true },
 ];
 
